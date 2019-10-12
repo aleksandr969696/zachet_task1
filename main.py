@@ -803,6 +803,7 @@ class Application(Frame):
                                -self.m/self.m_max*math.sqrt(R_MAX))
 
         self.x_y_canvas.itemconfig(self.point_of_xy_canvas, outline = self.color[1])
+        print('lalala')
 
     def post_rendering(self):
 
