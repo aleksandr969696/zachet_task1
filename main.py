@@ -1,18 +1,30 @@
 from tkinter import *
 from tkinter.ttk import Combobox
-from tkinter import Tk, W, E, Frame
-from tkinter.ttk import Button, Style, Entry, Label
-
+from tkinter import Tk, W, E, Frame, colorchooser, Button, Entry, Label
+# from tkinter.ttk import Button, Style, Entry, Label
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import matplotlib
+import random
+from numpy import arange, sin, pi
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import pylab
+from matplotlib.figure import Figure
+from numpy import arange, sin, pi
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 U_MAX = 100
 U_MIN = -100
 V_MAX = 100
 V_MIN = -100
+R_MAX = 200
+R_V_MAX = 20
+G = 6.6743015*math.pow(10,-11)
+class Particle:
 
-
-class Corpuscle:
-
-    def __init__(self, x, y, u, v, m, color, lifetime):
+    def __init__(self, x=0, y=0, u=0, v=0, m=0, color=NONE, lifetime=0):
         self.x = x
         self.y = y
         self.u = u
@@ -21,15 +33,22 @@ class Corpuscle:
         self.color = color
         self.lifetime = lifetime
 
+    @property
+    def r(self):
+        return np.array([self.x, self.y])
+
 
 class Emitter:
 
-    def __init__(self, x, y, u, v):
+    def __init__(self, x=0, y=0, u=0, v=0):
         self.x = x
         self.y = y
         self.u = u
         self.v = v
+        self.particles = []
 
+    def generate_particle(self, m, color, lifetime):
+        self.particles.append(Particle(self.x, self.y, self.u, self.v, m, color, lifetime))
 
 
 
@@ -40,11 +59,21 @@ class Application(Frame):
         self.check_button_u_v_value = False
         self.check_button_x_y_value = False
         self.check_button_m_value = False
-        self.x = 0
-        self.y = 0
-        self.u = 0
-        self.v = 0
+
+        self.emitter = Emitter()
+
+
+
+
+        # self.x = 0
+        # self.y = 0
+        # self.u = 0
+        # self.v = 0
         self.m = 0
+        self.color = ((0.0, 0.0, 0.0), 'red')
+
+        self.lifetime = 100
+        self.particles = []
 
         self.vector_u = 0
         self.vector_v = 0
@@ -60,7 +89,14 @@ class Application(Frame):
         # self.y_min = -100
         self.y_max = 100
 
+        self.graph_fig = plt.Figure()
+        self.x_values = np.arange(-self.x_max, self.x_max, 200/(self.x_max))
+        self.y_values = np.arange(-self.y_max, self.y_max, 200 / (self.y_max))
+
         self.m_max = 100
+
+        self.disabled = False
+        self.whats_wrong = {'m': False, 'x': False, 'y': False, 'u': False, 'v': False}
 
         self.parent = parent
         self.initUI()
@@ -68,10 +104,10 @@ class Application(Frame):
 
     def centerWindow(self):
         w = 900
-        h = 700
+        h = 730
         sw = self.parent.winfo_screenwidth()
         sh = self.parent.winfo_screenheight()
-        self.parent.minsize(800,600)
+        # self.parent.minsize(800,600)
         x = (sw - w) / 2
         y = (sh - h) / 2
         self.parent.geometry('%dx%d+%d+%d' % (w, h, x, y))
@@ -81,11 +117,19 @@ class Application(Frame):
         self.parent.title("Задача N тел")
         self.pack(fill=BOTH, expand=True)
         # Style().configure("TButton", padding=(0, 5, 0, 5), font='serif 10')
-
-        self.initSpeedI()
-        self.initEmitterI()
-        self.initMassI()
+        self.main_frame = Frame(self, background='AntiqueWhite1',
+                               highlightbackground='AntiqueWhite3', highlightthickness=2)
+        self.main_frame.place(relheight=7/7.3, relwidth=1, relx=0, rely=0.3/7.3)
+        self.initParamsI()
+        self.initMaxesI()
         self.initGraphI()
+        # self.initSpeedI()
+        # self.initEmitterI()
+        # self.initMassI()
+        # self.initCommandsI()
+        # self.initMassI()
+        # self.initGraphI()
+        # self.initParamsI()
         # self.border_canv1.create_line(0,0, 1000,0, width = 5)
 
         # emitter_frame = Frame(self, background = 'black')
@@ -106,496 +150,710 @@ class Application(Frame):
         # self.pack()
         self.post_rendering()
 
+    def initParamsI(self):
+        self.params_frame = Frame(self.main_frame, background='AntiqueWhite1')
+                               # highlightbackground='AntiqueWhite3', highlightthickness=2)
+        self.params_frame.place(height=204, relwidth=1, relx=0, rely=0)
+
+        self.u_v_canvas_frame = Frame(self.params_frame, background='AntiqueWhite1',
+                               highlightbackground='AntiqueWhite3', highlightthickness=1)
+        self.u_v_canvas_frame.place(height=202, width=300, relx=1, rely=0, anchor='ne')
+
+        self.u_v_canvas = Canvas(self.u_v_canvas_frame, background='AntiqueWhite2')
+        self.u_v_canvas.place(relheight=1, width=200, relx=0.999, rely=0, anchor = 'ne')
+        self.u_v_canvas.bind('<Button-1>', self.onClick_uv_canvas)
+
+        # u and v entries  -------------------------------------------------------------------------------------------
+        self.u_label = Label(self.u_v_canvas_frame, text='u:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.u_label.place(relx=0.01, rely=0.06)
+
+        self.u_entry = Entry(self.u_v_canvas_frame, width=10)
+        self.u_entry.insert(0, self.emitter.u)
+        self.u_entry.place(relx=0.1, rely=0.08)
+        self.u_entry.bind('<KeyRelease>', self.onKeyRelease_u)
+
+        self.v_label = Label(self.u_v_canvas_frame, text='v:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.v_label.place(relx=0.01, rely=0.23)
+
+        self.v_entry = Entry(self.u_v_canvas_frame, width=10)
+        self.v_entry.insert(0, self.emitter.v)
+        self.v_entry.place(relx=0.1, rely=0.25)
+        self.v_entry.bind('<KeyRelease>', self.onKeyRelease_v)
+        # ---------------------------------------------------------------------------------------------------------------
+
+        self.x_y_canvas_frame = Frame(self.params_frame, background='AntiqueWhite1',
+        highlightbackground='AntiqueWhite3', highlightthickness=1)
+        self.x_y_canvas_frame.place(height=202, width=300, relx=0, rely=0)
+
+        self.x_y_canvas = Canvas(self.x_y_canvas_frame, background='AntiqueWhite2')
+        self.x_y_canvas.place(relheight=1, width=200, x=0.001, rely=0)
+        self.x_y_canvas.bind('<Button-1>', self.onClick_xy_canvas)
+
+        # x and y entries  -------------------------------------------------------------------------------------------
+        self.x_label = Label(self.x_y_canvas_frame, text='x:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.x_label.place(x=205, rely=0.06)
+
+        self.x_entry = Entry(self.x_y_canvas_frame, width=10)
+        self.x_entry.insert(0, self.emitter.u)
+        self.x_entry.place(x=225, rely=0.08)
+        self.x_entry.bind('<KeyRelease>', self.onKeyRelease_x)
+
+        self.y_label = Label(self.x_y_canvas_frame, text='y:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.y_label.place(x=205, rely=0.23)
+
+        self.y_entry = Entry(self.x_y_canvas_frame, width=10)
+        self.y_entry.insert(0, self.emitter.v)
+        self.y_entry.place(x=225, rely=0.25)
+        self.y_entry.bind('<KeyRelease>', self.onKeyRelease_y)
+        # -------------------------------------------------------------------------------------------------------------
+
+
+        # parameters  -------------------------------------------------------------------------------------------------
+        self.m_frame = Frame(self.params_frame, background='AntiqueWhite1',
+                             highlightbackground='AntiqueWhite3', highlightthickness=2)
+        self.m_frame.place(relheight=1, width=300, relx=0.5, rely=0, anchor = 'n')
+
+        self.m_scale = Scale(self.m_frame, from_=0, to=self.m_max, orient=HORIZONTAL,
+                             background='AntiqueWhite1', command=self.onScale_m, foreground='AntiqueWhite1',
+                             highlightthickness=0)
+        self.m_scale.place(relwidth=7 / 11, relx=4 / 11, rely=0.5)
+
+        self.m_label = Label(self.m_frame, text='m:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.m_label.place(relx=0, rely=0.585)
+
+        self.m_entry = Entry(self.m_frame, width=10)
+        self.m_entry.insert(0, self.m)
+        self.m_entry.place(relx=0.1, rely=0.6)
+        self.m_entry.bind('<KeyRelease>', self.onKeyRelease_m)
+
+        self.color_label = Label(self.m_frame, text='Выберите цвет:', font=("Arial Bold", 12),
+                                 background='AntiqueWhite1')
+        self.color_label.place(relx=0.48, rely=0.04, anchor = 'ne')
+
+        self.button_choose_color = Button(self.m_frame, command=self.onClick_choose_color)
+        self.button_choose_color.config(background=self.color[1])
+        self.button_choose_color.place(relx=0.55, rely=0.05, height=20, relwidth=0.3)
+
+        self.lifetime_label = Label(self.m_frame, text='Время жизни:', font=("Arial Bold", 12),
+                                    background='AntiqueWhite1')
+        self.lifetime_label.place(relx=0.48, rely=0.35, anchor = 'ne')
+
+        self.lifetime_entry = Entry(self.m_frame, width=10)
+        self.lifetime_entry.insert(0, self.lifetime)
+        self.lifetime_entry.place(relx=0.55, rely=0.385, relwidth=0.3)
+
+        self.button_add = Button(self.m_frame, text='Добавить', command=self.onClick_add)
+        self.button_add.config(background='AntiqueWhite2')
+        self.button_add.place(relx=0.5, rely=0.8, anchor='n')
+        # -------------------------------------------------------------------------------------------------------------
+
+    def initMaxesI(self):
+        self.maxes_frame = Frame(self.main_frame, background='AntiqueWhite1',
+                                 highlightbackground='AntiqueWhite3', highlightthickness=2)
+        self.maxes_frame.place(height=30, relwidth=1, relx=0, y=200)
+
+        # x and y max  -------------------------------------------------------------------------------------------
+        self.x_y_max_frame = Frame(self.maxes_frame, background='AntiqueWhite1')
+        self.x_y_max_frame.place(relheight=1, width=300, relx=0, y=0)
+
+        self.x_label_max = Label(self.x_y_max_frame, text='x_max:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.x_label_max.place(x=10, rely=0.5, anchor = 'w')
+
+        self.x_entry_max = Entry(self.x_y_max_frame, width=10)
+        self.x_entry_max.insert(0, self.x_max)
+        self.x_entry_max.place(x=65, rely=0.5, width = 70, anchor = 'w')
+        self.x_entry_max.bind('<KeyRelease>', self.onKeyRelease_x_max)
+
+        self.y_label_max = Label(self.x_y_max_frame, text='y_max:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.y_label_max.place(x=220, rely=0.5, anchor = 'e')
+
+        self.y_entry_max = Entry(self.x_y_max_frame, width=10)
+        self.y_entry_max.insert(0, self.y_max)
+        self.y_entry_max.place(x=290, rely=0.5, width=70, anchor = 'e')
+        self.y_entry_max.bind('<KeyRelease>', self.onKeyRelease_y_max)
+        # -------------------------------------------------------------------------------------------------------------
+
+        # u and v max  -------------------------------------------------------------------------------------------
+        self.u_v_max_frame = Frame(self.maxes_frame, background='AntiqueWhite1')
+        self.u_v_max_frame.place(relheight=1, width=300, relx=1, y=0, anchor = 'ne')
+
+        self.u_label_max = Label(self.u_v_max_frame, text='u_max:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.u_label_max.place(x=10, rely=0.5, anchor='w')
+
+        self.u_entry_max = Entry(self.u_v_max_frame, width=10)
+        self.u_entry_max.insert(0, self.u_max)
+        self.u_entry_max.place(x=65, rely=0.5, width=70, anchor='w')
+        self.u_entry_max.bind('<KeyRelease>', self.onKeyRelease_u_max)
+
+        self.v_label_max = Label(self.u_v_max_frame, text='v_max:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.v_label_max.place(x=220, rely=0.5, anchor='e')
+
+        self.v_entry_max = Entry(self.u_v_max_frame, width=10)
+        self.v_entry_max.insert(0, self.v_max)
+        self.v_entry_max.place(x=290, rely=0.5, width=70, anchor='e')
+        self.v_entry_max.bind('<KeyRelease>', self.onKeyRelease_v_max)
+        # -------------------------------------------------------------------------------------------------------------
+
+        # m max  -------------------------------------------------------------------------------------------
+        self.m_max_frame = Frame(self.maxes_frame, background='AntiqueWhite1')
+        self.m_max_frame.place(relheight=1, width=300, relx=0.5, y=0, anchor='n')
+
+        self.m_label_max = Label(self.m_max_frame, text='m_max:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.m_label_max.place(x=90, rely=0.5, anchor='w')
+
+        self.m_entry_max = Entry(self.m_max_frame, width=10)
+        self.m_entry_max.insert(0, self.m_max)
+        self.m_entry_max.place(x=150, rely=0.5, width=70, anchor='w')
+        self.m_entry_max.bind('<KeyRelease>', self.onKeyRelease_m_max)
+
+        # -------------------------------------------------------------------------------------------------------------
+
+    def initGraphI(self):
+        self.graph_frame = Frame(self.main_frame, background='AntiqueWhite1',
+                                      highlightbackground='AntiqueWhite3', highlightthickness=1)
+        self.graph_frame.place(height=460, width=460, relx=0.5, y=232, anchor='n')
+        self.graph_canvas = FigureCanvasTkAgg(self.graph_fig, master=self.graph_frame)
+        self.graph_canvas.get_tk_widget().place(relx=0, rely=0, relheight=1, relwidth=1)
+
+
+        # self.ax = self.graph_fig.add_subplot(111) # We'll explain the "111" later. Basically, 1 row and 1 column.
+        #
+        #
+        # # self.ax.set_facecolor('red')
+        # self.ax.set_xlim([-self.x_max, self.x_max])
+        # self.ax.set_ylim([-self.y_max, self.y_max])
+
+        # self.line, = self.ax.plot(self.x_values, np.sin(self.x_values))
+        self.ani = animation.FuncAnimation(self.graph_fig, self.animate, np.arange(1, 200), interval=125, blit=False)
+
     def initSpeedI(self):
-        self.u_v_frame = Frame(self, background='AntiqueWhite1',
+        self.u_v_frame = Frame(self.main_frame, background='AntiqueWhite1',
                                highlightbackground='AntiqueWhite3', highlightthickness=2)
-        self.u_v_frame.place(relheight=3/7, relwidth=1/3, relx=2/3, rely=0)
+        self.u_v_frame.place(relheight=2.5/7, relwidth=1.01/4, relx=2.99/4, rely=0)
 
 
         self.u_v_canvas_frame = Frame(self.u_v_frame, background='AntiqueWhite1')
-        self.u_v_canvas_frame.place(relheight=0.75, relwidth=0.75, relx=0.25, rely=0.25)
-
-        self.u_scale = Scale(self.u_v_canvas_frame, from_=-self.u_max, to=self.u_max, orient=HORIZONTAL,
-                             background='AntiqueWhite1', command=self.onScale_u, foreground = 'AntiqueWhite1',
-                             highlightthickness=0)
-        self.u_scale.place(relwidth=0.9, relx=0.9, rely=1, anchor='se')
-
-        self.v_scale = Scale(self.u_v_canvas_frame, from_=self.v_max, to=-self.v_max, orient=VERTICAL,
-                             background='AntiqueWhite1', command=self.onScale_v, foreground = 'AntiqueWhite1',
-                             highlightthickness=0)
-        self.v_scale.place(relheight=0.9, relx=1, rely=0, anchor='ne')
+        self.u_v_canvas_frame.place(relheight=0.9, relwidth=100/101, relx=1/202, rely=0.09)
 
         self.u_v_canvas = Canvas(self.u_v_canvas_frame, background='AntiqueWhite2')
-        self.u_v_canvas.place(relheight=0.9, relwidth=0.9, relx=0.9, rely=0.9, anchor='se')
+        self.u_v_canvas.place(relheight=1, relwidth=1, relx=0, rely=0)
+        self.u_v_canvas.bind('<Button-1>', self.onClick_uv_canvas)
 
-        self.u_v_canvas.create_line(0,0,self.u_v_canvas.winfo_width(), self.u_v_canvas.winfo_height())
-
-        self.u_label = Label(self.u_v_frame, text='u:', font=("Arial Bold", 15), background='AntiqueWhite1')
-        self.u_label.place(relx=0.25, rely=0.15)
+        self.u_label = Label(self.u_v_frame, text='u:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.u_label.place(relx=0.25, relheight = 0.05, rely=0.01)
 
         self.u_entry = Entry(self.u_v_frame, width=10)
-        self.u_entry.insert(0, self.u)
-        self.u_entry.place(relx=0.32, rely=0.17)
-        self.u_entry.config(state=DISABLED)
+        self.u_entry.insert(0, self.emitter.u)
+        self.u_entry.place(relx=0.32, rely=0.01)
+        # self.u_entry.config(state=DISABLED)
+        self.u_entry.bind('<KeyRelease>', self.onKeyRelease_u)
 
-        self.v_label = Label(self.u_v_frame, text='v:', font=("Arial Bold", 15), background='AntiqueWhite1')
-        self.v_label.place(relx=0.625, rely=0.15)
-
+        self.v_label = Label(self.u_v_frame, text='v:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.v_label.place(relx=0.625, relheight = 0.05, rely=0.01)
+        #
         self.v_entry = Entry(self.u_v_frame, width=10)
-        self.v_entry.insert(0, self.v)
-        self.v_entry.place(relx=0.695, rely=0.17)
-        self.v_entry.config(state=DISABLED)
-
-        self.u_v_var = BooleanVar()
-        self.u_v_check_button = Checkbutton(self.u_v_frame, text='ручной ввод', background='AntiqueWhite1',
-                                            variable = self.u_v_var, command = self.onClick_u_v_check)
-        self.u_v_check_button.place(relx=0.25, rely=0.07)
+        self.v_entry.insert(0, self.emitter.v)
+        self.v_entry.place(relx=0.695, rely=0.01)
+        self.v_entry.bind('<KeyRelease>', self.onKeyRelease_v)
 
 
-        self.u_v_confirm = Button(self.u_v_frame, text="Подтвердить", command=self.onClick_u_v_confirm)
-        self.u_v_confirm.place(relx=0.625, rely=0.07)
 
-        # self.u_min_label = Label(self.u_v_frame, text=r'u_min', font=("Arial Bold", 15), background='AntiqueWhite1')
-        # self.u_min_label.place(relx=0.025, rely=0.25)
 
-        self.u_max_label = Label(self.u_v_frame, text=r'u_max', font=("Arial Bold", 12), background='AntiqueWhite1')
-        self.u_max_label.place(relx=0.02, rely=0.3)
-
-        # self.v_min_label = Label(self.u_v_frame, text=r'v_min', font=("Arial Bold", 15), background='AntiqueWhite1')
-        # self.v_min_label.place(relx=0.025, rely=0.55)
-
-        self.v_max_label = Label(self.u_v_frame, text=r'v_max', font=("Arial Bold", 12), background='AntiqueWhite1')
-        self.v_max_label.place(relx=0.02, rely=0.55)
-
-        # self.u_min_entry = Entry(self.u_v_frame, width=10)
-        # self.u_min_entry.insert(0, self.u_min)
-        # self.u_min_entry.place(relx=0.02, rely=0.345)
-
-        self.u_max_entry = Entry(self.u_v_frame, width=10)
-        self.u_max_entry.insert(0, self.u_max)
-        self.u_max_entry.place(relx=0.01, rely=0.4)
-
-        # self.v_min_entry = Entry(self.u_v_frame, width=10)
-        # self.v_min_entry.insert(0, self.v_min)
-        # self.v_min_entry.place(relx=0.02, rely=0.645)
-
-        self.v_max_entry = Entry(self.u_v_frame, width=10)
-        self.v_max_entry.insert(0, self.v_max)
-        self.v_max_entry.place(relx=0.01, rely=0.65)
-
-        self.u_v_max_confirm = Button(self.u_v_frame, text="ОК", command=self.onClick_u_v_max_confirm)
-        self.u_v_max_confirm.place(relx=0.025, rely=0.8, relwidth = 0.2)
-
-        if self.check_button_u_v_value == True:
-            self.u_v_check_button.select()
-        self.onClick_u_v_check()
 
     def initEmitterI(self):
-        self.x_y_frame = Frame(self, background='AntiqueWhite1',
+        self.x_y_frame = Frame(self.main_frame, background='AntiqueWhite1',
                                highlightbackground='AntiqueWhite3', highlightthickness=2)
-        self.x_y_frame.place(relheight=3/7, relwidth=1/3, relx=2/3, rely=3/7)
+        self.x_y_frame.place(relheight=2.5/7, relwidth=1/3, relx=2/3, rely=4.5/7)
 
         self.x_y_canvas_frame = Frame(self.x_y_frame, background='AntiqueWhite1')
-        self.x_y_canvas_frame.place(relheight=0.75, relwidth=0.75, relx=0.25, rely=0.25)
-
-        self.x_scale = Scale(self.x_y_canvas_frame, from_=-self.x_max, to=self.x_max, orient=HORIZONTAL,
-                             background='AntiqueWhite1', command=self.onScale_x, foreground = 'AntiqueWhite1',
-                             highlightthickness=0)
-        self.x_scale.place(relwidth=0.9, relx=0.9, rely=1, anchor='se')
-
-        self.y_scale = Scale(self.x_y_canvas_frame, from_=self.y_max, to=-self.y_max, orient=VERTICAL,
-                             background='AntiqueWhite1', command=self.onScale_y, foreground = 'AntiqueWhite1',
-                             highlightthickness=0)
-        self.y_scale.place(relheight=0.9, relx=1, rely=0, anchor='ne')
+        self.x_y_canvas_frame.place(relheight=0.9, relwidth=0.75, relx=0.24, rely=0.09)
 
         self.x_y_canvas = Canvas(self.x_y_canvas_frame, background='AntiqueWhite2')
-        self.x_y_canvas.place(relheight=0.9, relwidth=0.9, relx=0.9, rely=0.9, anchor='se')
+        self.x_y_canvas.place(relheight=1, relwidth=1, relx=0, rely=0)
+        self.x_y_canvas.bind('<Button-1>', self.onClick_xy_canvas)
 
-        self.x_y_canvas.create_line(0, 0, self.x_y_canvas.winfo_width(), self.x_y_canvas.winfo_height())
-
-        self.x_label = Label(self.x_y_frame, text='x:', font=("Arial Bold", 15), background='AntiqueWhite1')
-        self.x_label.place(relx=0.25, rely=0.15)
+        self.x_label = Label(self.x_y_frame, text='x:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.x_label.place(relx=0.25, relheight = 0.05, rely=0.01)
 
         self.x_entry = Entry(self.x_y_frame, width=10)
-        self.x_entry.insert(0, self.x)
-        self.x_entry.place(relx=0.32, rely=0.17)
-        self.x_entry.config(state=DISABLED)
+        self.x_entry.insert(0, self.emitter.x)
+        self.x_entry.place(relx=0.32, rely=0.01)
+        self.x_entry.bind('<KeyRelease>', self.onKeyRelease_x)
+        # self.x_entry.config(state=DISABLED)
 
-        self.y_label = Label(self.x_y_frame, text='y:', font=("Arial Bold", 15), background='AntiqueWhite1')
-        self.y_label.place(relx=0.625, rely=0.15)
+        self.y_label = Label(self.x_y_frame, text='y:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.y_label.place(relx=0.625, relheight = 0.05, rely=0.01)
 
         self.y_entry = Entry(self.x_y_frame, width=10)
-        self.y_entry.insert(0, self.y)
-        self.y_entry.place(relx=0.695, rely=0.17)
-        self.y_entry.config(state=DISABLED)
+        self.y_entry.insert(0, self.emitter.y)
+        self.y_entry.place(relx=0.695, rely=0.01)
+        self.y_entry.bind('<KeyRelease>', self.onKeyRelease_y)
 
-        self.x_y_var = BooleanVar()
-        self.x_y_check_button = Checkbutton(self.x_y_frame, text='ручной ввод', background='AntiqueWhite1',
-                                            variable=self.x_y_var, command=self.onClick_x_y_check)
-        self.x_y_check_button.place(relx=0.25, rely=0.07)
+        self.button_add = Button(self.x_y_frame, text = 'Добавить', command=self.onClick_add)
+        self.button_add.config(background='AntiqueWhite2')
+        self.button_add.place(relx=0.55, rely=13/14)
 
-        self.x_y_confirm = Button(self.x_y_frame, text="Подтвердить", command=self.onClick_x_y_confirm)
-        self.x_y_confirm.place(relx=0.625, rely=0.07)
+        # self.u_label = Label(self.x_y_frame, text='u:', font=("Arial Bold", 15), background='AntiqueWhite1')
+        # self.u_label.place(relx=0.25, rely=0)
+        #
+        # self.u_entry = Entry(self.x_y_frame, width=10)
+        # self.u_entry.insert(0, self.emitter.u)
+        # self.u_entry.place(relx=0.32, rely=0.01)
+        #     # self.u_entry.config(state=DISABLED)
+        # self.u_entry.bind('<KeyRelease>', self.onKeyRelease_u)
+        #
+        # self.v_label = Label(self.x_y_frame, text='v:', font=("Arial Bold", 15), background='AntiqueWhite1')
+        # self.v_label.place(relx=0.625, rely=0.13)
+        #     #
+        # self.v_entry = Entry(self.x_y_frame, width=10)
+        # self.v_entry.insert(0, self.emitter.v)
+        # self.v_entry.place(relx=0.695, rely=0.15)
+        # self.v_entry.bind('<KeyRelease>', self.onKeyRelease_v)
+        # self.y_entry.config(state=DISABLED)
 
-        self.x_max_label = Label(self.x_y_frame, text=r'x_max', font=("Arial Bold", 12), background='AntiqueWhite1')
-        self.x_max_label.place(relx=0.02, rely=0.3)
-
-        # self.v_min_label = Label(self.u_v_frame, text=r'v_min', font=("Arial Bold", 15), background='AntiqueWhite1')
-        # self.v_min_label.place(relx=0.025, rely=0.55)
-
-        self.y_max_label = Label(self.x_y_frame, text=r'y_max', font=("Arial Bold", 12), background='AntiqueWhite1')
-        self.y_max_label.place(relx=0.02, rely=0.55)
-
-        # self.u_min_entry = Entry(self.u_v_frame, width=10)
-        # self.u_min_entry.insert(0, self.u_min)
-        # self.u_min_entry.place(relx=0.02, rely=0.345)
-
-        self.x_max_entry = Entry(self.x_y_frame, width=10)
-        self.x_max_entry.insert(0, self.x_max)
-        self.x_max_entry.place(relx=0.01, rely=0.4)
-
-        # self.v_min_entry = Entry(self.u_v_frame, width=10)
-        # self.v_min_entry.insert(0, self.v_min)
-        # self.v_min_entry.place(relx=0.02, rely=0.645)
-
-        self.y_max_entry = Entry(self.x_y_frame, width=10)
-        self.y_max_entry.insert(0, self.y_max)
-        self.y_max_entry.place(relx=0.01, rely=0.65)
-
-        self.x_y_max_confirm = Button(self.x_y_frame, text="ОК", command=self.onClick_x_y_max_confirm)
-        self.x_y_max_confirm.place(relx=0.025, rely=0.8, relwidth=0.2)
-
-        if self.check_button_x_y_value == True:
-            self.x_y_check_button.select()
-        self.onClick_x_y_check()
 
     def initMassI(self):
-        self.m_frame = Frame(self, background='AntiqueWhite1',
+        self.m_frame = Frame(self.main_frame, background='AntiqueWhite1',
                         highlightbackground='AntiqueWhite3', highlightthickness=2)
-        self.m_frame.place(relheight=1 / 7, relwidth=1/3, relx=2/3, rely=6/7)
+        self.m_frame.place(relheight=1/ 7, relwidth=1/3, relx=2/3, rely=2.5/7)
 
         self.m_scale = Scale(self.m_frame, from_=0, to=self.m_max, orient=HORIZONTAL,
                              background='AntiqueWhite1', command=self.onScale_m, foreground = 'AntiqueWhite1',
                              highlightthickness=0)
-        self.m_scale.place(relwidth=27/40, relx=0.25, rely=0.5)
+        self.m_scale.place(relwidth=7/11, relx=4/11, rely=0.5 )
 
-        self.m_label = Label(self.m_frame, text='m:', font=("Arial Bold", 15), background='AntiqueWhite1')
-        self.m_label.place(relx=0.42, rely=0.4)
+        self.m_label = Label(self.m_frame, text='m:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.m_label.place(relx=0, rely=0.66)
 
         self.m_entry = Entry(self.m_frame, width=10)
         self.m_entry.insert(0, self.m)
-        self.m_entry.place(relx=0.52, rely=0.45)
-        self.m_entry.config(state=DISABLED)
+        self.m_entry.place(relx=0.1, rely=0.7)
+        self.m_entry.bind('<KeyRelease>', self.onKeyRelease_m)
 
-        self.m_var = BooleanVar()
-        self.m_check_button = Checkbutton(self.m_frame, text='ручной ввод', background='AntiqueWhite1',
-                                            variable=self.m_var, command=self.onClick_m_check)
-        self.m_check_button.place(relx=0.25, rely=0.05)
+        self.color_label = Label(self.m_frame, text='Выберите цвет:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.color_label.place(relx=0, rely=0)
 
-        self.m_confirm = Button(self.m_frame, text="Подтвердить", command=self.onClick_m_confirm)
-        self.m_confirm.place(relx=0.625, rely=0.05)
+        self.button_choose_color = Button(self.m_frame,  command=self.onClick_choose_color)
+        self.button_choose_color.config(background=self.color[1])
+        self.button_choose_color.place(relx=0.55, rely=0.05, height = 20, relwidth=0.3)
 
-        self.m_max_label = Label(self.m_frame, text=r'm_max', font=("Arial Bold", 12), background='AntiqueWhite1')
-        self.m_max_label.place(relx=0.01, rely=0.15)
+        self.lifetime_label = Label(self.m_frame, text='Время жизни:', font=("Arial Bold", 12), background='AntiqueWhite1')
+        self.lifetime_label.place(relx=0, rely=0.35)
 
-        self.m_max_entry = Entry(self.m_frame, width=10)
-        self.m_max_entry.insert(0, self.m_max)
-        self.m_max_entry.place(relx=0.01, rely=0.45)
+        self.lifetime_entry = Entry(self.m_frame, width=10)
+        self.lifetime_entry.insert(0, self.lifetime)
+        self.lifetime_entry.place(relx=0.55, rely=0.385, relwidth = 0.3)
 
-        self.m_max_confirm = Button(self.m_frame, text="ОК", command=self.onClick_m_max_confirm)
-        self.m_max_confirm.place(relx=0.025, rely=0.7, relwidth=0.2)
+    # def initCommandsI(self):
+    #     self.commands_frame = Frame(self, background='AntiqueWhite1',
+    #                          highlightbackground='AntiqueWhite3', highlightthickness=2)
+    #     self.commands_frame.place(relheight=1/ 14, relwidth=2 / 3, relx=0, rely=13 / 14)
 
-        if self.check_button_m_value == True:
-            self.m_check_button.select()
-        self.onClick_m_check()
 
-    def initGraphI(self):
-        graph_frame = Frame(self, background='AntiqueWhite2',
-                        highlightbackground='AntiqueWhite3', highlightthickness=2)
-        graph_frame.place(relheight=6/7, relwidth=2/3, relx=0, rely=0)
+    #
+    # def initGraphI(self):
+    #     self.graph_frame = Frame(self, background='AntiqueWhite2',
+    #                     highlightbackground='AntiqueWhite3', highlightthickness=2)
+    #     self.graph_frame.place(relheight=6/7, relwidth=2/3, relx=0, rely=0)
+    #     self.graph_canvas = Canvas(self.graph_frame, background='AntiqueWhite1')
+    #     self.graph_canvas.place(relheight=1, relwidth=1, relx=0, rely=0)
+
+
+    def f_x(self, y, t):
+        r, v = y
+        summ = np.zeros(2)
+        summ_y = 0
+        for p in self.emitter.particles:
+            if r != p.r:
+                summ += p.m*(r-p.r)/math.pow(np.linalg(r-p.r),3)
+        return(G*summ)
+
+    def animate(self, i): # We'll explain the "111" later. Basically, 1 row and 1 column.
+        self.graph_fig.clear()
+        self.ax = self.graph_fig.add_subplot(111)  # We'll explain the "111" later. Basically, 1 row and 1 column.
+
+        # self.ax.set_facecolor('red')
+        self.ax.set_xlim([-self.x_max, self.x_max])
+        self.ax.set_ylim([-self.y_max, self.y_max])
+        # self.ax.set_facecolor('red')
+        for i in self.emitter.particles:
+            circle = matplotlib.patches.Circle((i.x, i.y), radius=i.m/self.m_max*self.x_max/10, color = i.color[1], fill=True)
+
+            self.ax.add_patch(circle)
+        # self.ax.add_patch(self.circle5)
+        # self.line.set_ydata(np.sin(self.x_values + i / 10.0))  # update the data
+        # return self.line,
+
+    def onClick_add(self):
+        smth_wrong = False
+        print(self.whats_wrong)
+        for value in self.whats_wrong:
+            if self.whats_wrong[value]==True:
+                smth_wrong=True
+                break
+        if smth_wrong==False:
+            self.emitter.generate_particle(self.m, self.color, self.lifetime)
+        else:
+            print('smth_wrong')
+
+    def onClick_choose_color(self):
+        self.color = colorchooser.askcolor()
+        self.button_choose_color.config(background = self.color[1])
+        self.draw_point()
+        # print(self.color[1])
+
+    def smth_wrong(self, what, value):
+        self.whats_wrong[what]=value
+
+    def onKeyRelease_u(self, event):
+        entry = self.u_entry.get()
+        if entry.isdigit()and math.fabs(int(entry))<=self.u_max or entry != '' and ((entry[0] == '-'
+                                                                          or entry[0] == '+') and entry[1:].isdigit())\
+                and math.fabs(int(entry))<=self.u_max :
+            self.smth_wrong('u', False)
+            self.emitter.u = int(entry)
+            self.draw_vector()
+            self.draw_vector_on_graph()
+            self.u_entry.config(background='white')
+        else:
+            self.smth_wrong('u', True)
+            self.u_entry.config(background='red')
+
+
+    def onKeyRelease_v(self, event):
+        entry = self.v_entry.get()
+        if entry.isdigit()and math.fabs(int(entry))<=self.v_max or entry != '' and ((entry[0] == '-'
+                                                                          or entry[0] == '+') and entry[1:].isdigit())\
+                and math.fabs(int(entry))<=self.v_max:
+            self.smth_wrong('v', False)
+            self.emitter.v = int(entry)
+            self.draw_vector()
+            self.draw_vector_on_graph()
+            self.v_entry.config(background='white')
+        else:
+            self.smth_wrong('v', True)
+            self.v_entry.config(background='red')
+
+
+    def onClick_uv_canvas(self, event):
+        if self.disabled == True:
+            return
+        self.emitter.u = int((int(event.x)-self.u_v_canvas.winfo_width()/2)/
+                             (self.u_v_canvas.winfo_width()/2)*self.u_max)
+        self.emitter.v = int((-int(event.y)+self.u_v_canvas.winfo_height()/2)/
+                             (self.u_v_canvas.winfo_height()/2)*self.v_max)
+        self.u_entry.delete(0,END)
+        self.u_entry.insert(0, self.emitter.u)
+        self.v_entry.delete(0, END)
+        self.v_entry.insert(0, self.emitter.v)
+        self.draw_vector()
+        self.draw_vector_on_graph()
+        self.u_entry.config(background='white')
+        self.v_entry.config(background='white')
+        print(self.x_y_canvas.winfo_width(), self.x_y_canvas.winfo_height(),
+              self.u_v_canvas.winfo_width(), self.u_v_canvas.winfo_height(),
+              self.params_frame.winfo_width(), self.params_frame.winfo_height())
+
+    def onClick_xy_canvas(self, event):
+        if self.disabled == True:
+            return
+        print(self.x_y_canvas.winfo_width())
+        self.emitter.x = int((int(event.x)-self.x_y_canvas.winfo_width()/2)/
+                             (self.x_y_canvas.winfo_width()/2)*self.x_max)
+        self.emitter.y = int((-int(event.y)+self.x_y_canvas.winfo_height()/2)/
+                             (self.x_y_canvas.winfo_height()/2)*self.y_max)
+        self.x_entry.delete(0,END)
+        self.x_entry.insert(0, self.emitter.x)
+        self.y_entry.delete(0, END)
+        self.y_entry.insert(0, self.emitter.y)
+        self.draw_point()
+        self.draw_vector_on_graph()
+        self.x_entry.config(background='white')
+        self.y_entry.config(background='white')
+
+    def onKeyRelease_x_max(self, event):
+        x = 0
+        entry = self.x_entry_max.get()
+        if entry.isdigit()and float(entry)!=0 or entry!='' and ((entry[0]=='-' or entry[0]=='+') and entry[1:].isdigit()):
+            self.x_max = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.x_entry_max.config(background = 'white')
+            if self.disabled == True:
+                self.to_disable()
+            self.onKeyRelease_x(None)
+        else:
+            if self.disabled == False:
+                self.to_disable()
+            self.x_entry_max.config(background = 'red')
+
+    def onKeyRelease_y_max(self, event):
+        x = 0
+        entry = self.y_entry_max.get()
+        if entry.isdigit()and float(entry)!=0 or entry!='' and ((entry[0]=='-' or entry[0]=='+') and entry[1:].isdigit()):
+            self.y_max = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.y_entry_max.config(background = 'white')
+            if self.disabled == True:
+                self.to_disable()
+
+            self.onKeyRelease_y(None)
+        else:
+            if self.disabled == False:
+                self.to_disable()
+            self.y_entry_max.config(background = 'red')
+
+    def onKeyRelease_u_max(self, event):
+        x = 0
+        entry = self.u_entry_max.get()
+        if entry.isdigit()and float(entry)!=0 or entry!='' and ((entry[0]=='-' or entry[0]=='+') and entry[1:].isdigit()):
+            self.u_max = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.u_entry_max.config(background = 'white')
+            if self.disabled == True:
+                self.to_disable()
+
+            self.onKeyRelease_u(None)
+        else:
+            if self.disabled == False:
+                self.to_disable()
+            self.u_entry_max.config(background = 'red')
+
+    def onKeyRelease_v_max(self, event):
+        x = 0
+        entry = self.v_entry_max.get()
+        if entry.isdigit()and float(entry)!=0 or entry!='' and ((entry[0]=='-' or entry[0]=='+') and entry[1:].isdigit()):
+            self.v_max = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.v_entry_max.config(background = 'white')
+            if self.disabled == True:
+                self.to_disable()
+            self.onKeyRelease_v(None)
+        else:
+            if self.disabled == False:
+                self.to_disable()
+            self.v_entry_max.config(background = 'red')
+
+    def onKeyRelease_m_max(self, event):
+        x = 0
+        entry = self.m_entry_max.get()
+        if entry.isdigit()and float(entry)!=0 or entry!='' and ((entry[0]=='-' or entry[0]=='+') and entry[1:].isdigit()):
+            self.m_max = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.m_entry_max.config(background = 'white')
+            # self.m_scale = Scale(self.m_frame, from_=0, to=self.m_max, orient=HORIZONTAL,
+            #                      background='AntiqueWhite1', command=self.onScale_m, foreground='AntiqueWhite1',
+            #                      highlightthickness=0)
+            self.m_scale.config(from_=0, to=self.m_max,)
+            if self.disabled == True:
+                self.to_disable()
+            self.onKeyRelease_m(None)
+        else:
+            if self.disabled == False:
+                self.to_disable()
+            self.m_entry_max.config(background = 'red')
+
+    def onKeyRelease_x(self, event):
+        x = 0
+        entry = self.x_entry.get()
+        if entry.isdigit() and math.fabs(int(entry))<=self.x_max\
+                or entry!='' and ((entry[0]=='-' or entry[0]=='+') and entry[1:].isdigit())\
+                and math.fabs(int(entry))<=self.x_max:
+
+            self.smth_wrong('x', False)
+            self.emitter.x = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.x_entry.config(background = 'white')
+        else:
+            self.smth_wrong('x', True)
+            self.x_entry.config(background = 'red')
+
+    def onKeyRelease_y(self, event):
+        entry = self.y_entry.get()
+        if entry.isdigit()and math.fabs(int(entry))<=self.y_max or entry != '' and ((entry[0] == '-'
+                                                                          or entry[0] == '+') and entry[1:].isdigit())\
+                and math.fabs(int(entry))<=self.y_max:
+            self.smth_wrong('y', False)
+            self.emitter.y = int(entry)
+            self.draw_point()
+            self.draw_vector_on_graph()
+            self.y_entry.config(background='white')
+        else:
+            self.smth_wrong('y', True)
+            self.y_entry.config(background='red')
+        # y = 0
+        # entry = self.y_entry.get()
+        # if entry!='-' and entry!='+':
+        #     try:
+        #         y = int(entry)
+        #     except ValueError:
+        #         if entry != '':
+        #             self.y_entry.delete(len(entry)-1,END)
+        #     else:
+        #         self.emitter.y = int(entry)
+        #         self.draw_point()
+        #         self.draw_vector_on_graph()
+
+    def onKeyRelease_m(self, event):
+        x = 0
+        entry = self.m_entry.get()
+        if entry.isdigit()and int(entry)<=self.m_max or entry!='' and ((entry[0]=='+') and entry[1:].isdigit()):
+            self.smth_wrong('m', False)
+            self.m = int(entry)
+            self.draw_point()
+            self.m_entry.config(background = 'white')
+            self.m_scale.set(self.m)
+        else:
+            self.smth_wrong('m', True)
+            self.m_entry.config(background = 'red')
 
     def onScale_m(self, val):
         va = int(float(val))
-        self.m_entry.config(state=NORMAL)
-        self.m_entry.delete(0,END)
-        self.m_entry.insert(0,str(va))
-        print(va)
+        self.m_entry.delete(0, END)
+        self.m_entry.insert(0, str(va))
         self.m = va
-        self.m_entry.config(state=DISABLED)
-        self.onClick_m_check()
+        self.draw_point()
+        self.m_entry.config(background = 'white')
+        self.smth_wrong('m', False)
 
-    def onClick_m_check(self):
-        if self.m_var.get() == TRUE:
-            # print('true')
-            self.m_entry.config(state=NORMAL)
-            self.m_entry.config(state=NORMAL)
-            self.m_scale.config(state=DISABLED)
-            self.m_scale.config(state=DISABLED)
-            self.m_confirm.config(state = NORMAL)
-            self.check_button_m_value = True
-        else:
-            # print('false')
-            self.m_entry.config(state=DISABLED)
-            self.m_entry.config(state=DISABLED)
-            self.m_scale.config(state=NORMAL)
-            self.m_scale.config(state=NORMAL)
-            self.m_confirm.config(state=DISABLED)
-            self.check_button_m_value = False
-
-    def onClick_m_confirm(self):
-        self.m = int(self.m_entry.get())
-        self.m_scale.config(state=NORMAL)
-        self.m_scale.set(self.m)
-        self.m_scale.config(state=DISABLED)
-
-    def onClick_m_max_confirm(self):
-        new_m_max = int(self.m_max_entry.get())
-        if new_m_max == self.m_max:
-            pass
-        else:
-            self.m_max = new_m_max
-            self.initMassI()
-            self.post_rendering()
-
-    def onClick_x_y_confirm(self):
-        self.x = int(self.x_entry.get())
-        self.y = int(self.y_entry.get())
-        self.x_scale.config(state=NORMAL)
-        self.y_scale.config(state=NORMAL)
-        self.x_scale.set(self.x)
-        self.y_scale.set(self.y)
-        self.x_scale.config(state=DISABLED)
-        self.y_scale.config(state=DISABLED)
-        print(self.x_y_canvas.winfo_width(), self.x_y_canvas.winfo_height())
-
-
-    def draw_vector(self):
-        self.u_v_canvas.delete('all')
-        self.u_v_canvas.create_line(self.u_v_canvas.winfo_width()/2,self.u_v_canvas.winfo_height()/2,
-                                    self.u_v_canvas.winfo_width()/2+
-                                    self.vector_u*(self.u_v_canvas.winfo_width()/(2*self.u_max)),
-                                    self.u_v_canvas.winfo_height()/2 -
-                                    self.vector_v*(self.u_v_canvas.winfo_height()/(2*self.u_max)), width=2)
-        self.u_v_canvas.create_oval(self.u_v_canvas.winfo_width() / 2 + - 1,
-                                    self.u_v_canvas.winfo_height() / 2 + 1,
-                                    self.u_v_canvas.winfo_width() / 2 + 1,
-                                    self.u_v_canvas.winfo_height() / 2 - 1, width=2)
-
-        self.u_v_canvas.create_oval(1,
-                                    1,
-                                    self.u_v_canvas.winfo_width()-1,
-                                    self.u_v_canvas.winfo_height()-1)
-        # self.u_v_canvas.create_line(self.u_v_canvas.winfo_width() / 2 + self.vector_x,
-        #                             self.u_v_canvas.winfo_height() / 2 - self.vector_y, width=2,
-        #                             )
-
-    def onScale_u(self, val):
-        va = int(float(val))
-        self.u_entry.config(state=NORMAL)
-        self.u_entry.delete(0,END)
-        self.u_entry.insert(0,str(va))
-        print(va)
-        self.u = va
-        self.u_entry.config(state=DISABLED)
-        self.vector_u = va
-        self.draw_vector()
-        self.onClick_u_v_check()
-
-    def onScale_v(self, val):
-        va = int(float(val))
-        self.v_entry.config(state=NORMAL)
-        self.v_entry.delete(0, END)
-        self.v_entry.insert(0, str(va))
-        self.v = va
-        self.v_entry.config(state=DISABLED)
-        self.vector_v = va
-        self.draw_vector()
-        self.onClick_u_v_check()
-
-    def onClick_x_y_check(self):
-        if self.x_y_var.get() == TRUE:
-            # print('true')
-            self.x_entry.config(state=NORMAL)
-            self.y_entry.config(state=NORMAL)
-            self.x_scale.config(state=DISABLED)
-            self.y_scale.config(state=DISABLED)
-            self.check_button_x_y_value = True
-
-        else:
-            # print('false')
-            self.x_entry.config(state=DISABLED)
+    def to_disable(self):
+        if self.disabled == False:
+            self.x_entry.config(state = DISABLED)
             self.y_entry.config(state=DISABLED)
-            self.x_scale.config(state=NORMAL)
-            self.y_scale.config(state=NORMAL)
-            self.check_button_x_y_value = False
-
-    def onClick_u_v_confirm(self):
-        self.u = int(self.u_entry.get())
-        self.v = int(self.v_entry.get())
-        self.u_scale.config(state=NORMAL)
-        self.v_scale.config(state=NORMAL)
-        self.u_scale.set(self.u)
-        self.v_scale.set(self.v)
-        self.u_scale.config(state=DISABLED)
-        self.v_scale.config(state=DISABLED)
-        # print(self.u_v_canvas.winfo_width(), self.u_v_canvas.winfo_height())
-
-    def onClick_x_y_max_confirm(self):
-        new_x_max = int(self.x_max_entry.get())
-        new_y_max = int(self.y_max_entry.get())
-        if new_x_max == self.x_max and new_y_max == self.y_max:
-            pass
-        else:
-            self.x_max = new_x_max
-            self.y_max = new_y_max
-            self.initEmitterI()
-            self.post_rendering()
-
-    def onClick_u_v_max_confirm(self):
-        new_u_max = int(self.u_max_entry.get())
-        new_v_max = int(self.v_max_entry.get())
-        if new_u_max == self.u_max and new_v_max == self.v_max:
-            pass
-        else:
-            self.u_max = new_u_max
-            self.v_max = new_v_max
-            self.initSpeedI()
-            self.post_rendering()
-
-    def draw_point(self):
-        self.x_y_canvas.delete('all')
-        self.x_y_canvas.create_oval(self.x_y_canvas.winfo_width()/2+
-                                    self.point_x*(self.x_y_canvas.winfo_width()/(2*self.x_max))-5,
-                                    self.x_y_canvas.winfo_height()/2-
-                                    self.point_y*(self.x_y_canvas.winfo_height()/(2*self.y_max))+5,
-                                    self.x_y_canvas.winfo_width()/2+
-                                    self.point_x*(self.x_y_canvas.winfo_width()/(2*self.x_max))+5,
-                                    self.x_y_canvas.winfo_height()/2 -
-                                    self.point_y*(self.x_y_canvas.winfo_height()/(2*self.y_max))-5, width=2)
-
-
-        self.x_y_canvas.create_oval(self.x_y_canvas.winfo_width() / 2 + - 1,
-                                    self.x_y_canvas.winfo_height() / 2 + 1,
-                                    self.x_y_canvas.winfo_width() / 2 + 1,
-                                    self.x_y_canvas.winfo_height() / 2 - 1, width=2)
-
-        self.x_y_canvas.create_oval(1,
-                                    1,
-                                    self.x_y_canvas.winfo_width()-1,
-                                    self.x_y_canvas.winfo_height()- 1, width=2)
-        # self.u_v_canvas.create_line(self.u_v_canvas.winfo_width() / 2 + self.vector_x,
-        #                             self.u_v_canvas.winfo_height() / 2 - self.vector_y, width=2,
-        #                             )
-
-    def onScale_x(self, val):
-        va = int(float(val))
-        self.x_entry.config(state=NORMAL)
-        self.x_entry.delete(0,END)
-        self.x_entry.insert(0,str(va))
-        self.x = va
-        self.x_entry.config(state=DISABLED)
-        self.point_x = va
-        self.draw_point()
-        self.onClick_x_y_check()
-
-    def onScale_y(self, val):
-        va = int(float(val))
-        self.y_entry.config(state=NORMAL)
-        self.y_entry.delete(0, END)
-        self.y_entry.insert(0, str(va))
-        self.y = va
-        self.y_entry.config(state=DISABLED)
-        self.point_y = va
-        self.draw_point()
-        self.onClick_x_y_check()
-
-    def onClick_u_v_check(self):
-        if self.u_v_var.get() == TRUE:
-            # print('true')
-            self.u_entry.config(state=NORMAL)
-            self.v_entry.config(state=NORMAL)
-            self.u_scale.config(state=DISABLED)
-            self.v_scale.config(state=DISABLED)
-            self.u_v_confirm.config(state = NORMAL)
-            self.check_button_u_v_value = True
-        else:
-            # print('false')
             self.u_entry.config(state=DISABLED)
             self.v_entry.config(state=DISABLED)
-            self.u_scale.config(state=NORMAL)
-            self.v_scale.config(state=NORMAL)
-            self.u_v_confirm.config(state=DISABLED)
-            self.check_button_u_v_value = False
+            self.button_add.config(state=DISABLED)
+            self.m_scale.config(state=DISABLED)
+            self.m_entry.config(state=DISABLED)
+
+            self.disabled = True
+        else:
+            self.x_entry.config(state=NORMAL)
+            self.y_entry.config(state=NORMAL)
+            self.u_entry.config(state=NORMAL)
+            self.v_entry.config(state=NORMAL)
+            self.button_add.config(state=NORMAL)
+            self.m_scale.config(state=NORMAL)
+            self.m_entry.config(state=NORMAL)
+            self.disabled = False
+
+    def draw_vector(self):
+        self.u_v_canvas.coords(self.vector_of_uv_canvas, self.u_v_canvas.winfo_width()/2,self.u_v_canvas.winfo_height()/2,
+                                    self.u_v_canvas.winfo_width()/2+
+                                    self.emitter.u*(self.u_v_canvas.winfo_width()/(2*self.u_max)),
+                                    self.u_v_canvas.winfo_height()/2 -
+                                    self.emitter.v*(self.u_v_canvas.winfo_height()/(2*self.v_max)))
+
+
+        # self.oval_on_graph = self.u_v_canvas.create_oval(1,
+        #                             1,
+        #                             self.u_v_canvas.winfo_width()-1,
+        #                             self.u_v_canvas.winfo_height()-1)
+    def draw_vector_on_graph(self):
+        a=self.emitter.u/self.u_max*R_V_MAX
+
+        b=self.emitter.v/self.v_max*R_V_MAX
+        if a==0 and b==0:
+            cos = 0
+            sin = 0
+            r=0
+        else:
+            r = math.sqrt(a*a+b*b)
+            cos = a/r
+            sin = b/r
+
+        self.x_y_canvas.coords(self.vector_of_xy_canvas, self.x_y_canvas.winfo_width() / 2 +
+                               self.emitter.x * (self.x_y_canvas.winfo_width() / (2 * self.x_max)),
+                               self.x_y_canvas.winfo_height() / 2 -
+                               self.emitter.y * (self.x_y_canvas.winfo_height() / (2 * self.v_max)),
+                               self.x_y_canvas.winfo_width() / 2 +
+                               self.emitter.x * (self.x_y_canvas.winfo_width() / (2 * self.x_max))+
+                               cos*r
+                               ,
+                               self.x_y_canvas.winfo_height() / 2 -
+                               self.emitter.y * (self.x_y_canvas.winfo_height() / (2 * self.v_max))
+                               -sin*r)
+
+
+        # self.oval_on_graph = self.u_v_canvas.create_oval(1,
+        #                             1,
+        #                             self.u_v_canvas.winfo_width()-1,
+        #                             self.u_v_canvas.winfo_height()-1)
+
+    # def draw_point_and
+
+    def draw_point(self):
+        self.x_y_canvas.coords(self.point_of_xy_canvas,
+                               self.x_y_canvas.winfo_width() / 2 +
+                               self.emitter.x * (self.x_y_canvas.winfo_width() / (2 * self.x_max))
+                               -self.m/self.m_max*math.sqrt(R_MAX),
+                               self.x_y_canvas.winfo_height() / 2 -
+                               self.emitter.y * (self.x_y_canvas.winfo_height() / (2 * self.y_max))
+                               +self.m/self.m_max*math.sqrt(R_MAX),
+                                    self.x_y_canvas.winfo_width()/2+
+                                    self.emitter.x*(self.x_y_canvas.winfo_width()/(2*self.x_max))
+                               +self.m/self.m_max*math.sqrt(R_MAX),
+                                    self.x_y_canvas.winfo_height()/2 -
+                                    self.emitter.y*(self.x_y_canvas.winfo_height()/(2*self.y_max))
+                               -self.m/self.m_max*math.sqrt(R_MAX))
+
+        self.x_y_canvas.itemconfig(self.point_of_xy_canvas, outline = self.color[1])
 
     def post_rendering(self):
-        self.x_y_canvas.create_oval(202 / 2 - 5,
-                                    202 / 2 + 5,
-                                    202 / 2 + 5,
-                                    202 / 2 - 5, width=2)
-        self.x_y_canvas.create_oval(202 / 2 - 1,
-                                    202 / 2 + 1,
-                                    202 / 2 + 1,
-                                    202 / 2 - 1, width=2)
-        self.u_v_canvas.create_oval(202 / 2 - 1,
-                                    202 / 2 + 1,
-                                    202 / 2 + 1,
-                                    202 / 2 - 1, width=2)
-        # self.x_y_canvas.create_oval(1,
-        #                             1,
-        #                             200,
-        #                             200)
-        self.border_canv1 = Canvas(self, background='AntiqueWhite3',
-                             highlightthickness=0)
-        self.border_canv1.place(relheight=1, width=2, relx=9/12, rely=0)
-        # self.border_canv2 = Canvas(self, background='AntiqueWhite4', border=0)
-        # self.border_canv2.place(relheight=1, width=7, relx=0.625, rely=0)
 
+        if self.x_y_canvas.winfo_width()==1:
+            u_v_canvas_width = 200
+            u_v_canvas_height = 200
+            x_y_canvas_width = 200
+            x_y_canvas_height = 200
+            self.center_of_uv_canvas = self.u_v_canvas.create_oval(u_v_canvas_width / 2 - 1,
+                                                                   u_v_canvas_height / 2 + 1,
+                                                                   u_v_canvas_width / 2 + 1,
+                                                                   u_v_canvas_height / 2 - 1, width=2)
+            self.radius_of_uv_canvas = self.u_v_canvas.create_oval(1,
+                                                                   1,
+                                                                   u_v_canvas_width - 1,
+                                                                   u_v_canvas_height - 1, width=2, outline='gray64')
+            self.vector_of_uv_canvas = self.u_v_canvas.create_line(u_v_canvas_width / 2,
+                                                                   u_v_canvas_height / 2,
+                                                                   u_v_canvas_width / 2,
+                                                                   u_v_canvas_height / 2, width=2)
+            self.center_of_xy_canvas = self.x_y_canvas.create_oval(x_y_canvas_width / 2 - 1,
+                                                                   x_y_canvas_height / 2 + 1,
+                                                                   x_y_canvas_width / 2 + 1,
+                                                                   x_y_canvas_height / 2 - 1, width=2)
+            self.radius_of_xy_canvas = self.x_y_canvas.create_oval(1,
+                                                                   1,
+                                                                   x_y_canvas_width - 1,
+                                                                   x_y_canvas_height - 1, width=2, outline='gray64')
+            self.point_of_xy_canvas = self.x_y_canvas.create_oval(x_y_canvas_width / 2,
+                                                                  x_y_canvas_height / 2,
+                                                                  x_y_canvas_width / 2,
+                                                                  x_y_canvas_height / 2, width=2)
+            self.vector_of_xy_canvas = self.x_y_canvas.create_line(x_y_canvas_width / 2,
+                                                                   x_y_canvas_height / 2,
+                                                                   x_y_canvas_width / 2,
+                                                                   x_y_canvas_height / 2, width=2)
+        # else:
+        #     u_v_canvas_width = self.u_v_canvas.winfo_width()
+        #     u_v_canvas_height = self.u_v_canvas.winfo_height()
+        #     x_y_canvas_width = self.x_y_canvas.winfo_width()
+        #     x_y_canvas_height = self.x_y_canvas.winfo_height()
+        #     self.x_y_canvas.coords(self.center_of_xy_canvas, x_y_canvas_width / 2 - 1,
+        #                                                            x_y_canvas_height / 2 + 1,
+        #                                                            x_y_canvas_width / 2 + 1,
+        #                                                            x_y_canvas_height / 2 - 1)
 
-class Example(Frame):
-    def __init__(self, parent):
-        Frame.__init__(self, parent)
-        self.parent = parent
-        self.initUI()
-
-    def initUI(self):
-        s = Style()
-        s.configure('My.TFrame', background='red')
-
-        self.parent.title("Review")
-        self.pack(fill=BOTH, expand=True)
-
-        frame1 = Frame(self, style = 'My.TFrame')
-        frame1.grid(row = 0, columnspan = 3, column = 0)
-
-        lbl1 = Label(frame1, text="Title", width=6)
-        lbl1.pack(side=LEFT, padx=5, pady=5)
-
-        entry1 = Entry(frame1)
-        entry1.pack(fill=X, padx=5, expand=True)
-
-        frame2 = Frame(self)
-        frame2.grid(row = 1, columnspan = 3, column = 0)
-
-        lbl2 = Label(frame2, text="Author", width=6)
-        lbl2.pack(side=LEFT, padx=5, pady=5)
-
-        entry2 = Entry(frame2)
-        entry2.pack(fill=X, padx=5, expand=True)
-
-        frame3 = Frame(self)
-        frame3.grid(row = 2, columnspan = 3, column = 0)
-
-        lbl3 = Label(frame3, text="Review", width=6)
-        lbl3.pack(side=LEFT, anchor=N, padx=5, pady=5)
-
-        txt = Text(frame3)
-        txt.pack(fill=BOTH, pady=5, padx=5, expand=True)
 
 def main():
     root = Tk()
     app = Application(root)
     root.update_idletasks()
-    app.post_rendering()
     root.mainloop()
 
 
