@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib
+from matplotlib.animation import FuncAnimation
 import random
 from numpy import arange, sin, pi
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -89,7 +90,7 @@ class Application(Frame):
         # self.y_min = -100
         self.y_max = 100
 
-        self.graph_fig = plt.Figure()
+        # self.graph_fig = plt.Figure()
         self.x_values = np.arange(-self.x_max, self.x_max, 200/(self.x_max))
         self.y_values = np.arange(-self.y_max, self.y_max, 200 / (self.y_max))
 
@@ -312,19 +313,30 @@ class Application(Frame):
         self.graph_frame = Frame(self.main_frame, background='AntiqueWhite1',
                                       highlightbackground='AntiqueWhite3', highlightthickness=1)
         self.graph_frame.place(height=460, width=460, relx=0.5, y=232, anchor='n')
-        self.graph_canvas = FigureCanvasTkAgg(self.graph_fig, master=self.graph_frame)
+
+        self.fig = plt.figure(facecolor='red')
+
+        self.graph_canvas = FigureCanvasTkAgg(self.fig, master=self.graph_frame)
         self.graph_canvas.get_tk_widget().place(relx=0, rely=0, relheight=1, relwidth=1)
 
+        self.ax = self.fig.add_axes([0,0,1,1], frameon=False)
+        self.ax.set_xlim(0, 1), self.ax.set_xticks([])
+        self.ax.set_ylim(0, 1), self.ax.set_yticks([])
+        self.graph_positions = np.random.uniform(0, 1, (50, 2))
+        self.graph_sizes =  np.random.uniform(50, 200, 50)
+        self.graph_colors = np.array([(0,0,0,1) for i in range(50)])
+        self.scat = self.ax.scatter(self.graph_positions[:, 0], self.graph_positions[:, 1],
+                          s=self.graph_sizes, lw=0.5, edgecolors=self.graph_colors,
+                          facecolors='none')
+        self.animation = FuncAnimation(self.fig, self.update, interval=1000)
 
-        # self.ax = self.graph_fig.add_subplot(111) # We'll explain the "111" later. Basically, 1 row and 1 column.
-        #
-        #
-        # # self.ax.set_facecolor('red')
-        # self.ax.set_xlim([-self.x_max, self.x_max])
-        # self.ax.set_ylim([-self.y_max, self.y_max])
-
-        # self.line, = self.ax.plot(self.x_values, np.sin(self.x_values))
-        self.ani = animation.FuncAnimation(self.graph_fig, self.animate, np.arange(1, 200), interval=125, blit=False)
+    def update(self, frame_number):
+        self.graph_positions = np.array([[i.x/self.x_max/2+0.5, i.y/self.y_max/2+0.5] for i in self.emitter.particles])
+        self.graph_sizes = np.array([(i+1)*50 for i in range(len(self.emitter.particles))])
+        self.graph_colors = np.array([(0,0,0,1) for i in self.emitter.particles])
+        self.scat.set_edgecolors(self.graph_colors)
+        self.scat.set_sizes(self.graph_sizes)
+        self.scat.set_offsets(self.graph_positions)
 
     def initSpeedI(self):
         self.u_v_frame = Frame(self.main_frame, background='AntiqueWhite1',
@@ -466,7 +478,7 @@ class Application(Frame):
         for p in self.emitter.particles:
             if r != p.r:
                 summ += p.m*(r-p.r)/math.pow(np.linalg(r-p.r),3)
-        return(G*summ)
+        return(v, G*summ)
 
     def animate(self, i): # We'll explain the "111" later. Basically, 1 row and 1 column.
         self.graph_fig.clear()
@@ -803,7 +815,6 @@ class Application(Frame):
                                -self.m/self.m_max*math.sqrt(R_MAX))
 
         self.x_y_canvas.itemconfig(self.point_of_xy_canvas, outline = self.color[1])
-        print('lalala')
 
     def post_rendering(self):
 
