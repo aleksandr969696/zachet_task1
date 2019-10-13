@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib
 from matplotlib.animation import FuncAnimation
+from scipy.integrate import odeint
 import random
 from numpy import arange, sin, pi
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -71,7 +72,8 @@ class Application(Frame):
         # self.u = 0
         # self.v = 0
         self.m = 0
-        self.color = ((0.0, 0.0, 0.0), 'red')
+        self.color = ((0.0, 0.0, 0.0), 'black')
+        self.to_calculate = False
 
         self.lifetime = 100
         self.particles = []
@@ -82,19 +84,21 @@ class Application(Frame):
         self.point_y = 0
 
         # self.u_min = -100
-        self.u_max = 100
+        self.u_max = 1000
         # self.v_min = -100
-        self.v_max = 100
+        self.v_max = 1000
         # self.x_min = -100
-        self.x_max = 100
+        self.x_max = 1000000000
         # self.y_min = -100
-        self.y_max = 100
+        self.y_max = 1000000000
+
+        self.t = 0
 
         # self.graph_fig = plt.Figure()
-        self.x_values = np.arange(-self.x_max, self.x_max, 200/(self.x_max))
-        self.y_values = np.arange(-self.y_max, self.y_max, 200 / (self.y_max))
+        # self.x_values = np.arange(-self.x_max, self.x_max, 200/(self.x_max))
+        # self.y_values = np.arange(-self.y_max, self.y_max, 200 / (self.y_max))
 
-        self.m_max = 100
+        self.m_max = 6000000000000000000000000
 
         self.disabled = False
         self.whats_wrong = {'m': False, 'x': False, 'y': False, 'u': False, 'v': False}
@@ -314,6 +318,9 @@ class Application(Frame):
                                       highlightbackground='AntiqueWhite3', highlightthickness=1)
         self.graph_frame.place(height=460, width=460, relx=0.5, y=232, anchor='n')
 
+        self.button_to_calculate = Button(self.main_frame, text="вычислять", command = self.button_calculate)
+        self.button_to_calculate.place(relx=0.1, rely=0.5, height=20, width = 50)
+
         self.fig = plt.figure(facecolor='red')
 
         self.graph_canvas = FigureCanvasTkAgg(self.fig, master=self.graph_frame)
@@ -328,15 +335,63 @@ class Application(Frame):
         self.scat = self.ax.scatter(self.graph_positions[:, 0], self.graph_positions[:, 1],
                           s=self.graph_sizes, lw=0.5, edgecolors=self.graph_colors,
                           facecolors='none')
-        self.animation = FuncAnimation(self.fig, self.update, interval=1000)
+        self.anima= FuncAnimation(self.fig, self.update, interval=100)
 
-    def update(self, frame_number):
+
+    def button_calculate(self):
+        self.to_calculate = True
+
+    def update(self, frame):
+        particles = []
+        if self.to_calculate == True:
+            for i, p in enumerate(self.emitter.particles):
+                # print(p.x, p.y, p.u, p.v)
+                t=np.linspace(self.t, self.t+3600, 100)
+                lk = odeint(self.f_x,[p.x,p.y, p.u, p.v], t,
+                            args=([self.emitter.particles[j] for j in range(len(self.emitter.particles)) if j != i],))
+                # print(lk)
+                particles.append(lk[-1])
+                self.t+=3600
+                # print(sol)
+                # # print(r, v)
+                # particles[i][0]= sol[1][0]
+                # particles[i][1]= sol[1][1]
+                # particles[i][2] = sol[1][2]
+                # particles[i][3] = sol[1][3]
+        print('draw')
+        for i, p in enumerate(particles):
+            # print(p)
+            self.emitter.particles[i].x = p[0]
+            self.emitter.particles[i].y = p[1]
+            self.emitter.particles[i].u = p[2]
+            self.emitter.particles[i].v = p[3]
+
         self.graph_positions = np.array([[i.x/self.x_max/2+0.5, i.y/self.y_max/2+0.5] for i in self.emitter.particles])
-        self.graph_sizes = np.array([(i+1)*50 for i in range(len(self.emitter.particles))])
+        self.graph_sizes = np.array([50 for i in range(len(self.emitter.particles))])
         self.graph_colors = np.array([(0,0,0,1) for i in self.emitter.particles])
+        # graph_positions = np.array([[i.x/self.x_max/2+0.5, i.y/self.y_max/2+0.5] for i in self.emitter.particles])
+        # graph_sizes = np.array([50 for i in range(len(self.emitter.particles))])
+        # graph_colors = np.array([(0,0,0,1) for i in self.emitter.particles])
+        # scat.set_edgecolors(graph_colors)
+        # scat.set_sizes(graph_sizes)
+        # scat.set_offsets(graph_positions)
         self.scat.set_edgecolors(self.graph_colors)
         self.scat.set_sizes(self.graph_sizes)
         self.scat.set_offsets(self.graph_positions)
+
+    def f_x(self, y, t, particles):
+        x, y, u, v = y
+        summ_x = 0
+        summ_y = 0
+        for p in particles:
+            # print('p   ',p.x, p.y, p.m)
+            if x - p.x >0.000000000000000000000000000001 or y - p.y> 0.000000000000000000000000000001:
+                print(x,p.x,y,p.y)
+                r_mod = math.pow(x-p.x,2)+math.pow(y-p.y,2)
+                summ_x -= G*p.m*(x-p.x)/math.pow(r_mod,3/2)
+                summ_y -= G*p.m * (y - p.y) / math.pow(r_mod, 3 / 2)
+        # print('--------------------------------------      ',u,v,summ_x, summ_y)
+        return [u, v, summ_x, summ_y]
 
     def initSpeedI(self):
         self.u_v_frame = Frame(self.main_frame, background='AntiqueWhite1',
@@ -471,14 +526,7 @@ class Application(Frame):
     #     self.graph_canvas.place(relheight=1, relwidth=1, relx=0, rely=0)
 
 
-    def f_x(self, y, t):
-        r, v = y
-        summ = np.zeros(2)
-        summ_y = 0
-        for p in self.emitter.particles:
-            if r != p.r:
-                summ += p.m*(r-p.r)/math.pow(np.linalg(r-p.r),3)
-        return(v, G*summ)
+
 
     def animate(self, i): # We'll explain the "111" later. Basically, 1 row and 1 column.
         self.graph_fig.clear()
