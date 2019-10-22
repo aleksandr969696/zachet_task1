@@ -15,10 +15,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pylab
 from matplotlib.figure import Figure
 from numpy import arange, sin, pi
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import time
 import copy
-
+import json
 
 U_MAX = 100
 U_MIN = -100
@@ -48,31 +48,11 @@ class Particle:
     def __str__(self):
         s = 'x: '+str(self.x)+' y:'+ str(self.y) + ' u:'+str(self.u)+' v:'+str(self.v)
         return s
-    # @property
-    # def r(self):
-    #     return np.array([self.x, self.y])
-    #
-    # @property.getter
-    # def x(self):
-    #     return self.x_*math.pow(10,self.x_10)
-    #
-    # @property.setter
-    #
-    # @property
-    # def y(self):
-    #     return self.y_ * math.pow(10, self.y_10)
-    #
-    # @property
-    # def u(self):
-    #     return self.u_ * math.pow(10, self.u_10)
-    #
-    # @property
-    # def v(self):
-    #     return self.v_ * math.pow(10, self.v_10)
-    #
-    # @property
-    # def m(self):
-    #     return self.m_ * math.pow(10, self.m_10)
+
+    def to_dict(self):
+        return {'x': self.x, 'y': self.y, 'u': self.u, 'v': self.v, 'm': self.m,
+                'lifetime': self.lifetime, 'color': self.color}
+
 
 
 class Emitter:
@@ -88,6 +68,12 @@ class Emitter:
         self.v_10 = v_10
         self.particles = []
         self.particles_init = []
+
+    def to_dict(self):
+        d = {}
+        for i, p in enumerate(self.particles):
+            d[i] = p.to_dict()
+        return d
 
     def generate_particle(self, m, color, lifetime):
         x=self.x_*math.pow(10,self.x_10)
@@ -126,6 +112,8 @@ class Application(Frame):
         self.check_button_u_v_value = False
         self.check_button_x_y_value = False
         self.check_button_m_value = False
+
+        self.graph_wided = False
 
         self.emitter = Emitter()
 
@@ -176,15 +164,15 @@ class Application(Frame):
 
         self.parent = parent
         self.initUI()
-        self.centerWindow()
+        self.centerWindow(900,730)
 
     @property
     def m(self):
         return self.m_*math.pow(10,self.m_10)
 
-    def centerWindow(self):
-        w = 900
-        h = 730
+    def centerWindow(self, w, h):
+        # w = w
+        # h = h
         sw = self.parent.winfo_screenwidth()
         sh = self.parent.winfo_screenheight()
         # self.parent.minsize(800,600)
@@ -201,7 +189,7 @@ class Application(Frame):
                                highlightbackground='AntiqueWhite3', highlightthickness=2)
         self.main_frame.place(relheight=7/7.3, relwidth=1, relx=0, rely=0.3/7.3)
         self.initParamsI()
-        self.initMaxesI()
+        # self.initMaxesI()
         self.initGraphI()
         menubar = Menu(self.parent)
         self.parent.config(menu=menubar)
@@ -450,28 +438,41 @@ class Application(Frame):
         self.button_to_calculate = Button(self.main_frame, text="Рисовать", command = self.button_calculate)
         self.button_to_calculate.place(relx=0.1, rely=0.5, height=20, width = 100)
 
+        self.button_to_clean = Button(self.main_frame, text="Очистить", command=self.delete_particles)
+        self.button_to_clean.place(relx=0.1, rely=0.6, height=20, width=100)
+
         self.button_to_calculate_without_draw = Button(self.main_frame, text="Вычислить",
                                                        command=self.button_calculate_without_draw)
         self.button_to_calculate_without_draw.place(relx=0.9, rely=0.5, height=20, width=100, anchor = 'ne')
+
+        self.button_to_wide = Button(self.main_frame, text="Увеличить",
+                                                       command=self.wide_graph)
+        self.button_to_wide.place(relx=0.5, y=210, height=20, width=100, anchor='n')
+
+
 
         self.t_label = Label(self.main_frame, text='t:', font=("Arial Bold", 12), background='AntiqueWhite1')
         self.t_label.place(relx=0.85, rely=0.6)
 
         self.t_entry = Entry(self.main_frame)
-        self.t_entry.insert(0, self.emitter.u_)
+        self.t_entry.insert(0, 100000)
         self.t_entry.place(relx=0.9, rely=0.6, width=60)
 
         self.delta_t_label = Label(self.main_frame, text='dt:', font=("Arial Bold", 12), background='AntiqueWhite1')
         self.delta_t_label.place(relx=0.85, rely=0.7)
 
         self.delta_t_entry = Entry(self.main_frame)
-        self.delta_t_entry.insert(0, self.emitter.u_)
+        self.delta_t_entry.insert(0, 1000)
         self.delta_t_entry.place(relx=0.9, rely=0.7, width=60)
 
         self.fig = plt.figure(facecolor='black')
 
         self.graph_canvas = FigureCanvasTkAgg(self.fig, master=self.graph_frame)
         self.graph_canvas.get_tk_widget().place(relx=0, rely=0, relheight=1, relwidth=1)
+
+        # self.toolbar = NavigationToolbar2Tk(self.graph_canvas, self.graph_frame)
+        # self.toolbar.update()
+        # self.graph_canvas._tkcanvas.place(relx=0.5, rely=1, relwidth = 1, height = 50, anchor = 's')
 
         self.ax = self.fig.add_axes([0,0,1,1], frameon=False)
         self.ax.set_xlim(0, 1), self.ax.set_xticks([])
@@ -482,15 +483,19 @@ class Application(Frame):
         self.scat = self.ax.scatter(self.graph_positions[:, 0], self.graph_positions[:, 1],
                           s=self.graph_sizes, lw=0.5, edgecolors=self.graph_colors,
                           facecolors=self.graph_colors)
-        self.anima= FuncAnimation(self.fig, self.update, interval=100)
+        self.anima= FuncAnimation(self.fig, self.update, interval=1)
 
+
+    def delete_particles(self):
+        # self.parent.place_forget()
+        self.__init__(self.parent)
 
     def onMethod(self, param):
         self.method = param
         return param
 
     def onOpen(self):
-        ftypes = [('Text files', '*.txt'), ('All files', '*')]
+        ftypes = [('Text files', '*.json'), ('All files', '*')]
         dlg = filedialog.Open(self, filetypes=ftypes)
         fl = dlg.show()
 
@@ -500,21 +505,39 @@ class Application(Frame):
 
     def readFile(self, filename):
         with open(filename, 'r') as f:
-            data = []
-            t = f.read()
-            st = t.split('\n')
-            for i in range(len(st)):
-                data = st[i].split(' ')
-                print(data)
-                print(data[0], int(data[0]))
-                self.emitter.x_ = int(data[0])
-                self.emitter.y_ = int(data[1])
-                self.emitter.u_ = int(data[2])
-                self.emitter.v_ = int(data[3])
-                self.m_ = int(data[4])
-                self.color = ((int(data[5]),int(data[6]),int(data[7])),'red')
-                self.onClick_add()
+            data = json.load(f)
+        print(data)
+        print(type(data))
+        for d in data['particles'].values():
+            print(d)
+                # print(data)
+                # print(data[0], int(data[0]))
+            self.emitter.x_ = int(d['x'])
+            self.emitter.y_ = int(d['y'])
+            self.emitter.u_ = int(d['u'])
+            self.emitter.v_ = int(d['v'])
+            self.m_ = int(d['m'])
+            self.lifetime = int(d['lifetime'])
+                # self.color = ((int(d['color'][0]),int(data[6]),int(data[7])),'red')
+            self.color = d['color']
+            self.onClick_add()
                 # self.emitter.generate_particle(self.m, 100, (0.0, 0.0, 0.0))
+
+    def wide_graph(self):
+        if self.graph_wided == False:
+            self.params_frame.place_forget()
+            self.graph_frame.place(height=800, width=800, relx=0.5, y=0, anchor='n')
+            self.graph_wided = True
+            self.button_to_wide.place(relx=0.5, y=5, height=20, width=100, anchor='n')
+            self.button_to_wide.config(text = 'Уменьшить')
+            self.centerWindow(900,800)
+        else:
+            self.params_frame.place(height=204, relwidth=1, relx=0, rely=0)
+            self.graph_frame.place(height=460, width=460, relx=0.5, y=232, anchor='n')
+            self.graph_wided = False
+            self.button_to_wide.place(relx=0.5, y=210, height=20, width=100, anchor='n')
+            self.button_to_wide.config(text='Увеличить')
+            self.centerWindow(900,730)
 
     def button_calculate(self):
         if self.to_calculate == False:
@@ -538,10 +561,13 @@ class Application(Frame):
             self.emitter.particles[i].y = p[1]
             self.emitter.particles[i].u = p[2]
             self.emitter.particles[i].v = p[3]
-        filename = 'output_'+self.method.__name__+'.txt'
-
+        filename = 'output_'+self.method.__name__+'.json'
+        d = {'particles': self.emitter.to_dict(), 'time': timer, 't': self.t_entry.get(),
+             'delta_t': self.delta_t_entry.get()}
+        print(type(d))
+        print(d)
         with open(filename, 'w') as f:
-            f.write(str(self.emitter) +' time:' + str(timer) +'\n')
+            json.dump(d, f)
 
 
 
@@ -549,13 +575,15 @@ class Application(Frame):
         particles = []
         for i, p in enumerate(self.emitter.particles):
             # print(p.x, p.y, p.u, p.v)
-            t = np.linspace(0, t_, t_/delta_t)
+            t = np.linspace(0, t_, t_/delta_t+1)
             lk = odeint(self.f_x, [p.x, p.y,
                                    p.u, p.v], t,
                         args=([self.emitter.particles[j] for j in range(len(self.emitter.particles)) if j != i],))
             # print(lk)
             particles.append(lk[-1])
         return particles
+
+    # def draw_two_results(self):
 
     def calculate_a(self, points_array):
         """
@@ -594,10 +622,10 @@ class Application(Frame):
 
 
     def calculate_verle(self, t_, delta_t):
-        t=np.linspace(0, t_, t_/delta_t)
+        t=np.linspace(0, t_, t_/delta_t+1)
         particles = np.array([[p.x, p.y, p.u, p.v, p.m] for p in self.emitter.particles])
         a = np.zeros((len(self.emitter.particles),2))
-        for t in t[:-1]:
+        for tk in t[:-1]:
             for i, p in enumerate(particles):
                 lk = self.my_verle_for_xy([p[0], p[1],
                                        p[2], p[3]], delta_t,
@@ -623,22 +651,10 @@ class Application(Frame):
         if self.to_calculate == True:
             # particles = self.calculate_odeint(self.t, 3600)
             # t = np.linspace(0,3600,100)
-            particles = self.calculate_verle(3600,36)
-            # self.t += 3600
-            # for i, p in enumerate(self.emitter.particles):
-            #     # print(p.x, p.y, p.u, p.v)
-            #     t=np.linspace(self.t, self.t+3600, 100)
-            #     lk = odeint(self.f_x,[p.x,p.y, p.u, p.v], t,
-            #                 args=([self.emitter.particles[j] for j in range(len(self.emitter.particles)) if j != i],))
-            #     # print(lk)
-            #     particles.append(lk[-1])
-            #     self.t+=3600
-                # print(sol)
-                # # print(r, v)
-                # particles[i][0]= sol[1][0]
-                # particles[i][1]= sol[1][1]
-                # particles[i][2] = sol[1][2]
-                # particles[i][3] = sol[1][3]
+            t = float(self.t_entry.get())
+            dt = float(self.delta_t_entry.get())
+            # particles = self.calculate_verle(t,dt)
+            particles = self.method(t, t)
 
         for i, p in enumerate(particles):
             # print(p)
@@ -649,11 +665,14 @@ class Application(Frame):
             # print('here ----- ', self.emitter.particles[i].x, self.emitter.particles[i].y, self.emitter.particles[i].u, self.emitter.particles[i].v)
         # for i in self.emitter.particles:
             # print(i.x,self.real_x_max, i.y, self.real_x_max)
-
+        min_r = 1
+        sizes = np.linspace(1,20,11)
         self.graph_positions = np.array([[i.x/self.real_x_max/2/1.1+0.5, i.y/self.real_x_max/2/1.1+0.5] for i in self.emitter.particles])
-        self.graph_sizes = np.array([math.sqrt(i.m/self.real_m_max)*100 for i in self.emitter.particles])
 
-        self.graph_colors = np.array([(i.color[0][0]/255,i.color[0][1]/255,i.color[0][2]/255,1) for i in self.emitter.particles])
+        # self.graph_sizes = np.array([max(math.sqrt(i.m/self.real_m_max)*20,min_r) for i in self.emitter.particles])
+        self.graph_sizes = np.array([sizes[int(math.sqrt(i.m / self.real_m_max) * 10)] for i in self.emitter.particles])
+        # print(self.graph_sizes)
+        self.graph_colors = np.array([(i.color[0]/255,i.color[1]/255,i.color[2]/255,1) for i in self.emitter.particles])
         # graph_positions = np.array([[i.x/self.x_max/2+0.5, i.y/self.y_max/2+0.5] for i in self.emitter.particles])
         # graph_sizes = np.array([50 for i in range(len(self.emitter.particles))])
         # graph_colors = np.array([(0,0,0,1) for i in self.emitter.particles])
@@ -685,19 +704,6 @@ class Application(Frame):
         #     summ_y -= G*p.m * (y - p.y) / math.pow(r_mod, 3 / 2)
         return [u, v, a[0], a[1]]
 
-    # def initCommandsI(self):
-    #     self.commands_frame = Frame(self, background='AntiqueWhite1',
-    #                          highlightbackground='AntiqueWhite3', highlightthickness=2)
-    #     self.commands_frame.place(relheight=1/ 14, relwidth=2 / 3, relx=0, rely=13 / 14)
-
-
-    #
-    # def initGraphI(self):
-    #     self.graph_frame = Frame(self, background='AntiqueWhite2',
-    #                     highlightbackground='AntiqueWhite3', highlightthickness=2)
-    #     self.graph_frame.place(relheight=6/7, relwidth=2/3, relx=0, rely=0)
-    #     self.graph_canvas = Canvas(self.graph_frame, background='AntiqueWhite1')
-    #     self.graph_canvas.place(relheight=1, relwidth=1, relx=0, rely=0)
 
 
     def onClick_add(self):
@@ -725,7 +731,7 @@ class Application(Frame):
 
 
     def onClick_choose_color(self):
-        self.color = colorchooser.askcolor()
+        self.color = colorchooser.askcolor()[1]
         self.button_choose_color.config(background = self.color[1])
         self.draw_point()
         print(self.color)
