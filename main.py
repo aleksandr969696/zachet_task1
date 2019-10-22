@@ -205,31 +205,6 @@ class Application(Frame):
         fileMenu.add_separator()
 
         menubar.add_cascade(label="File", underline=0, menu=fileMenu)
-        # self.initSpeedI()
-        # self.initEmitterI()
-        # self.initMassI()
-        # self.initCommandsI()
-        # self.initMassI()
-        # self.initGraphI()
-        # self.initParamsI()
-        # self.border_canv1.create_line(0,0, 1000,0, width = 5)
-
-        # emitter_frame = Frame(self, background = 'black')
-        # emitter_frame.place(relheight = 0.5, relwidth=0.375, relx=0.625, rely=0.5)
-        # # emitter_frame.config()
-        #
-        # bck2 = Button(emitter_frame, text="Back2")
-        # bck2.grid(row=0, column=0)
-
-
-        # m_frame.config()
-
-
-
-
-        # graph_frame.config()
-
-        # self.pack()
         self.post_rendering()
 
     def initParamsI(self):
@@ -487,8 +462,13 @@ class Application(Frame):
 
 
     def delete_particles(self):
-        # self.parent.place_forget()
-        self.__init__(self.parent)
+        self.real_x_max = 1
+        self.real_y_max = 1
+        self.real_u_max = 0
+        self.real_v_max = 0
+        self.real_m_max = 0
+        self.emitter.particles = []
+
 
     def onMethod(self, param):
         self.method = param
@@ -530,6 +510,14 @@ class Application(Frame):
             self.graph_wided = True
             self.button_to_wide.place(relx=0.5, y=5, height=20, width=100, anchor='n')
             self.button_to_wide.config(text = 'Уменьшить')
+
+            self.button_to_calculate.place_forget()
+            self.button_to_clean.place_forget()
+            self.button_to_calculate_without_draw.place_forget()
+            self.t_label.place_forget()
+            self.t_entry.place_forget()
+            self.delta_t_label.place_forget()
+            self.delta_t_entry.place_forget()
             self.centerWindow(900,800)
         else:
             self.params_frame.place(height=204, relwidth=1, relx=0, rely=0)
@@ -537,6 +525,15 @@ class Application(Frame):
             self.graph_wided = False
             self.button_to_wide.place(relx=0.5, y=210, height=20, width=100, anchor='n')
             self.button_to_wide.config(text='Увеличить')
+
+            self.button_to_calculate.place(relx=0.1, rely=0.5, height=20, width=100)
+            self.button_to_clean.place(relx=0.1, rely=0.6, height=20, width=100)
+            self.button_to_calculate_without_draw.place(relx=0.9, rely=0.5, height=20, width=100, anchor='ne')
+            self.t_label.place(relx=0.85, rely=0.6)
+            self.t_entry.place(relx=0.9, rely=0.6, width=60)
+            self.delta_t_label.place(relx=0.85, rely=0.7)
+            self.delta_t_entry.place(relx=0.9, rely=0.7, width=60)
+
             self.centerWindow(900,730)
 
     def button_calculate(self):
