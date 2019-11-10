@@ -49,6 +49,9 @@ class Particle:
         s = 'x: '+str(self.x)+' y:'+ str(self.y) + ' u:'+str(self.u)+' v:'+str(self.v)
         return s
 
+    def to_array_coords(self):
+        return [self.x, self.y, self.u, self.v]
+
     def to_dict(self):
         return {'x': self.x, 'y': self.y, 'u': self.u, 'v': self.v, 'm': self.m,
                 'lifetime': self.lifetime, 'color': self.color}
@@ -74,6 +77,8 @@ class Emitter:
         for i, p in enumerate(self.particles):
             d[i] = p.to_dict()
         return d
+
+    # def to_array_coords(self, coords):
 
     def generate_particle(self, m, color, lifetime):
         x=self.x_*math.pow(10,self.x_10)
@@ -483,6 +488,12 @@ class Application(Frame):
             text = self.readFile(fl)
             # self.txt.insert(END, text)
 
+    def onSave(self):
+        ftypes = [('Text files', '*.json'), ('All files', '*')]
+        dlg = filedialog.SaveAs(self, filetypes=ftypes)
+        fl = dlg.show()
+        return fl
+
     def readFile(self, filename):
         with open(filename, 'r') as f:
             data = json.load(f)
@@ -558,7 +569,8 @@ class Application(Frame):
             self.emitter.particles[i].y = p[1]
             self.emitter.particles[i].u = p[2]
             self.emitter.particles[i].v = p[3]
-        filename = 'output_'+self.method.__name__+'.json'
+        # filename = 'output_'+self.method.__name__+'.json'
+        filename = self.onSave()
         d = {'particles': self.emitter.to_dict(), 'time': timer, 't': self.t_entry.get(),
              'delta_t': self.delta_t_entry.get()}
         print(type(d))
@@ -570,14 +582,17 @@ class Application(Frame):
 
     def calculate_odeint(self , t_, delta_t):
         particles = []
+        t = np.linspace(0, t_, t_/delta_t+1)
+        y0=[]
+
         for i, p in enumerate(self.emitter.particles):
-            # print(p.x, p.y, p.u, p.v)
-            t = np.linspace(0, t_, t_/delta_t+1)
-            lk = odeint(self.f_x, [p.x, p.y,
-                                   p.u, p.v], t,
-                        args=([self.emitter.particles[j] for j in range(len(self.emitter.particles)) if j != i],))
-            # print(lk)
-            particles.append(lk[-1])
+            print(p.x, p.y, p.u, p.v)
+            y0.extend([p.x,p.y,p.u,p.v])
+        lk = odeint(self.f_x, y0, t,
+                    args=([p.m for p in self.emitter.particles],))
+        print(len(lk))
+        for k in range(int(len(lk[-1])/4)):
+            particles.append([lk[-1][k*4],lk[-1][k*4+1],lk[-1][k*4+2],lk[-1][k*4+3]])
         return particles
 
     # def draw_two_results(self):
@@ -602,12 +617,13 @@ class Application(Frame):
 
         return (-G*summ_x,-G*summ_y)
 
-    def my_verle_for_xy(self, z, delta_t, particles):
-        points_array = np.array([[z[0], z[1], i[0], i[1], i[4]] for i in particles])
-        a = self.calculate_a(points_array)
+    def my_verle_for_xy(self, z, delta_t, a_prev):
+        # points_array = np.array([[z[0], z[1], i[0], i[1], i[4]] for i in particles])
+        # a = self.calculate_a(points_array)
+        a = a_prev
         x_next = z[0]+z[2]*delta_t+1/2*a[0]
         y_next = z[1]+z[3]*delta_t+1/2*a[1]
-        return (x_next, y_next, a[0], a[1])
+        return (x_next, y_next)
 
     def my_verle_for_uv(self, z, uv_prev, delta_t, particles, a_prev):
         points_array = np.array([[z[0], z[1], i[0], i[1], i[4]] for i in particles])
@@ -615,7 +631,7 @@ class Application(Frame):
 
         u_next = uv_prev[0] + 1/2*(a[0]+a_prev[0])*delta_t
         v_next = uv_prev[1] + 1 /2*(a[1] + a_prev[1]) * delta_t
-        return (u_next, v_next)
+        return (u_next, v_next, a[0], a[1])
 
 
     def calculate_verle(self, t_, delta_t):
@@ -624,16 +640,19 @@ class Application(Frame):
         a = np.zeros((len(self.emitter.particles),2))
         for tk in t[:-1]:
             for i, p in enumerate(particles):
+                if tk == t[0]:
+                    points_array = np.array([[p[0], p[1], pa[0], pa[1], pa[4]] for j, pa in enumerate(particles) if j!=i])
+                    a[i,0], a[i,1] = self.calculate_a(points_array)
                 lk = self.my_verle_for_xy([p[0], p[1],
                                        p[2], p[3]], delta_t,
-                            [particles[j] for j in range(len(particles)) if j != i])
+                            a[i])
                 particles[i,0], particles[i,1] = lk[0], lk[1]
-                a[i,0], a[i,1] = lk[2], lk[3]
             for i, p in enumerate(particles):
                 lk = self.my_verle_for_uv([p[0],p[1]],[p[2],p[3]],delta_t,
                                           [particles[j] for j in range(len(particles)) if j != i], a[i])
                 # print(lk, particles[i])
                 particles[i, 2], particles[i, 3] = lk[0], lk[1]
+                a[i, 0], a[i, 1] = lk[2], lk[3]
 
         return particles
 
@@ -651,7 +670,7 @@ class Application(Frame):
             t = float(self.t_entry.get())
             dt = float(self.delta_t_entry.get())
             # particles = self.calculate_verle(t,dt)
-            particles = self.method(t, t)
+            particles = self.method(t, dt)
 
         for i, p in enumerate(particles):
             # print(p)
@@ -681,25 +700,33 @@ class Application(Frame):
         self.scat.set_sizes(self.graph_sizes)
         self.scat.set_offsets(self.graph_positions)
 
-    def f_x(self, z, t, particles):
-        x, y, u, v = z
-        summ_x = 0
-        summ_y = 0
-        points_array = np.array([[x, y, i.x, i.y, i.m] for i in particles])
+    def f_x(self, z, t, masses):
+        z_ = z
+        a=[]
+        for i in range(int(len(z)/4)):
+            points_array = np.array([[z_[i*4], z_[i*4+1], z_[j*4], z_[j*4+1], masses[j]]
+                                     for j in range(int(len(z)/4)) if i != j])
+            # a.append(self.calculate_a(points_array))
+            summ_x = 0
+            # summ_x = np.sum(points_array[:, 4] * (points_array[:, 0] - points_array[:, 2]) /
+            #                 np.power(np.power(points_array[:, 0] - points_array[:, 2], 2)
+            #                          + np.power(points_array[:, 1] - points_array[:, 3], 2), 3 / 2))
+            # summ_y = np.sum(points_array[:, 4] * (points_array[:, 1] - points_array[:, 3]) /
+            #                 np.power(np.power(points_array[:, 0] - points_array[:, 2], 2) +
+            #                          np.power(points_array[:, 1] - points_array[:, 3], 2), 3 / 2))
+            summ_y = 0
+            for j in range(int(len(z)/4)):
+                if i!=j:
+                    r_3 = math.pow(math.pow(math.fabs(z_[j*4+1]-z_[i*4+1]),2)+math.pow(math.fabs(z_[j*4]-z_[i*4]),2),3/2)
+                    summ_x+= G*masses[j]*(z_[j*4]-z_[i*4])/r_3
+                    summ_y+=G*masses[j]*(z_[j*4+1]-z_[i*4+1])/r_3
+            a.append([summ_x, summ_y])
 
-        a = self.calculate_a(points_array)
-        # summ_x = np.sum(points_array[:,4]*(points_array[:,0]-points_array[:,2])/
-        #                 np.power(np.power(points_array[:,0]-points_array[:,2], 2)
-        #                          + np.power(points_array[:,1]-points_array[:,3], 2),3/2))
-        # summ_y = np.sum(points_array[:,4] * (points_array[:,1]-points_array[:,3]) /
-        #                 np.power(np.power(points_array[:,0]-points_array[:,2], 2) +
-        #                          np.power(points_array[:,1]-points_array[:,3], 2),3/2))
-        # for p in particles:
-        #     # if x - p.x >0.000000000000000000000000000001 or y - p.y> 0.000000000000000000000000000001:
-        #     r_mod = math.pow(x-p.x,2)+math.pow(y-p.y,2)
-        #     summ_x -= G*p.m*(x-p.x)/math.pow(r_mod,3/2)
-        #     summ_y -= G*p.m * (y - p.y) / math.pow(r_mod, 3 / 2)
-        return [u, v, a[0], a[1]]
+        ret = []
+        for i in range(int(len(z_)/4)):
+            ret.extend([z_[i*4+2],z_[i * 4 + 3],a[i][0],a[i][1]])
+        print('here', t, z[4], z[5], z[6], z[7], len(z))
+        return ret
 
 
 
