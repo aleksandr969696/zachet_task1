@@ -180,10 +180,10 @@ def main(t, delta_t, filename):
 
 
 if __name__ == '__main__':
-    file_name_from = r'solar_system.json'
+    file_name_from = r'inputs\solar_system.json'
     t = float(input('Введите t: '))
     dt = float(input('Введите dt: '))
-    filename = input('Введите имя файла с данными. По умолчанию solar_system.json. Если не хотите менять, оставьте ввод пустым')
+    filename = input('Введите имя файла с данными. По умолчанию inputs\solar_system.json. Если не хотите менять, оставьте ввод пустым')
     if filename == '':
         filename=file_name_from
     print('t:', t, 'dt:', dt, 'filename:', filename)
